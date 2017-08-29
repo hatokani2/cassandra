@@ -213,6 +213,9 @@ parser.add_option("-u", "--username", help="Authenticate as user.")
 parser.add_option("-p", "--password", help="Authenticate using password.")
 parser.add_option('-k', '--keyspace', help='Authenticate to the given keyspace.')
 parser.add_option("-f", "--file", help="Execute commands from FILE, then exit")
+parser.add_option("-i", "--interactive", action='store_true',
+                  help="With -f or -e, become interactive instead of exiting")
+
 parser.add_option('--debug', action='store_true',
                   help='Show additional debugging information')
 parser.add_option("--encoding", help="Specify a non-default encoding for output." +
@@ -437,7 +440,8 @@ class Shell(cmd.Cmd):
     default_page_size = 100
 
     def __init__(self, hostname, port, color=False,
-                 username=None, password=None, encoding=None, stdin=None, tty=True,
+                 username=None, password=None, encoding=None, stdin=None,
+                 tty=True, interactive=False,
                  completekey=DEFAULT_COMPLETEKEY, browser=None, use_conn=None,
                  cqlver=None, keyspace=None,
                  tracing_enabled=False, expand_enabled=False,
@@ -513,6 +517,7 @@ class Shell(cmd.Cmd):
         self.session.max_trace_wait = max_trace_wait
 
         self.tty = tty
+        self.interactive = interactive
         self.encoding = encoding
         self.check_windows_encoding()
 
@@ -836,7 +841,15 @@ class Shell(cmd.Cmd):
                 readline.set_completer(old_completer)
 
     def get_input_line(self, prompt=''):
-        if self.tty:
+        if self.stdin is not sys.stdin:
+            self.lastcmd = self.stdin.readline()
+            line = self.lastcmd
+            if not len(line):
+                if self.interactive:
+                    self.stdin = sys.stdin
+                else:
+                    raise EOFError
+        if self.stdin is sys.stdin:
             try:
                 self.lastcmd = raw_input(prompt).decode(self.encoding)
             except UnicodeDecodeError:
@@ -844,11 +857,6 @@ class Shell(cmd.Cmd):
                 traceback.print_exc()
                 self.check_windows_encoding()
             line = self.lastcmd + '\n'
-        else:
-            self.lastcmd = self.stdin.readline()
-            line = self.lastcmd
-            if not len(line):
-                raise EOFError
         self.lineno += 1
         return line
 
@@ -874,7 +882,10 @@ class Shell(cmd.Cmd):
                 try:
                     if self.single_statement:
                         line = self.single_statement
-                        self.stop = True
+                        if self.interactive:
+                            self.single_statement = None
+                        else:
+                            self.stop = True
                     else:
                         line = self.get_input_line(self.prompt)
                     self.statement.write(line)
@@ -1959,12 +1970,6 @@ class Shell(cmd.Cmd):
         else:
             session = conn.connect()
 
-        # Copy session properties
-        session.default_timeout = self.session.default_timeout
-        session.row_factory = self.session.row_factory
-        session.default_consistency_level = self.session.default_consistency_level
-        session.max_trace_wait = self.session.max_trace_wait
-
         # Update after we've connected in case we fail to authenticate
         self.conn = conn
         self.auth_provider = auth_provider
@@ -2240,6 +2245,7 @@ def read_options(cmdlineargs, environment):
 
     optvalues.debug = False
     optvalues.file = None
+    optvalues.interactive = False
     optvalues.ssl = option_with_default(configs.getboolean, 'connection', 'ssl', DEFAULT_SSL)
     optvalues.encoding = option_with_default(configs.get, 'ui', 'encoding', UTF8)
 
@@ -2275,8 +2281,9 @@ def read_options(cmdlineargs, environment):
     if len(arguments) > 1:
         port = arguments[1]
 
-    if options.file or options.execute:
-        options.tty = False
+    if not options.interactive:
+        if options.file or options.execute:
+            options.tty = False
 
     if options.execute and not options.execute.endswith(';'):
         options.execute += ';'
@@ -2284,10 +2291,10 @@ def read_options(cmdlineargs, environment):
     if optvalues.color in (True, False):
         options.color = optvalues.color
     else:
-        if options.file is not None:
-            options.color = False
-        else:
+        if options.tty:
             options.color = should_use_color()
+        else:
+            options.color = False
 
     if options.cqlversion is not None:
         options.cqlversion, cqlvertup = full_cql_version(options.cqlversion)
@@ -2396,6 +2403,7 @@ def main(options, hostname, port):
                       password=options.password,
                       stdin=stdin,
                       tty=options.tty,
+                      interactive=options.interactive,
                       completekey=options.completekey,
                       browser=options.browser,
                       protocol_version=options.protocol_version,
