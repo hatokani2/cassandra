@@ -85,6 +85,9 @@ Options:
 ``-f`` ``--file``
   Execute commands from the given file, then exit
 
+``-i`` ``--interactive``
+  Execute commands from the given file, then become interactive
+
 ``--debug``
   Print additional debugging information
 
