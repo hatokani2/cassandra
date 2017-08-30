@@ -884,6 +884,7 @@ class Shell(cmd.Cmd):
                         line = self.single_statement
                         if self.interactive:
                             self.single_statement = None
+                            self.tty = True
                         else:
                             self.stop = True
                     else:
