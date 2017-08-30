@@ -877,8 +877,8 @@ class Shell(cmd.Cmd):
         cmd.Cmd.cmdloop() to tell the difference between "EOF" showing up in
         input and an actual EOF.
         """
-        with self.prepare_loop():
-            while not self.stop:
+        while not self.stop:
+            with self.prepare_loop():
                 try:
                     if self.single_statement:
                         line = self.single_statement
