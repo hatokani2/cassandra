@@ -841,15 +841,7 @@ class Shell(cmd.Cmd):
                 readline.set_completer(old_completer)
 
     def get_input_line(self, prompt=''):
-        if self.stdin is not sys.stdin:
-            self.lastcmd = self.stdin.readline()
-            line = self.lastcmd
-            if not len(line):
-                if self.interactive:
-                    self.stdin = sys.stdin
-                else:
-                    raise EOFError
-        if self.stdin is sys.stdin:
+        if self.tty:
             try:
                 self.lastcmd = raw_input(prompt).decode(self.encoding)
             except UnicodeDecodeError:
@@ -857,6 +849,14 @@ class Shell(cmd.Cmd):
                 traceback.print_exc()
                 self.check_windows_encoding()
             line = self.lastcmd + '\n'
+        else:
+            self.lastcmd = self.stdin.readline()
+            line = self.lastcmd
+            if not len(line):
+                if self.interactive:
+                    self.tty = True
+                else:
+                    raise EOFError
         self.lineno += 1
         return line
 
@@ -2281,9 +2281,8 @@ def read_options(cmdlineargs, environment):
     if len(arguments) > 1:
         port = arguments[1]
 
-    if not options.interactive:
-        if options.file or options.execute:
-            options.tty = False
+    if options.file or options.execute:
+        options.tty = False
 
     if options.execute and not options.execute.endswith(';'):
         options.execute += ';'
